@@ -69,12 +69,7 @@
 		customError = '';
 		customLoading = true;
 		try {
-			const user = prompt("Enter your passkey name to sign in");
-			if (!user) {
-				customLoading = false;
-				return;
-			}
-			// Use the passkey-kit SDK to connect to an existing wallet
+			// No prompt for passkey name, just call connectWallet
 			const { keyId, contractId } = await account.connectWallet({
 				getContractId: (keyId) => server.getContractId({ keyId }),
 			});
@@ -396,6 +391,28 @@
 			adminKeys.find(({ key }) => keyId === key) || adminKeys[0]
 		).key;
 	}
+
+	async function customAddFunds() {
+		if (!customWalletAddress) return;
+		try {
+			customLoading = true;
+			const { built, ...transfer } = await native.transfer({
+				to: customWalletAddress,
+				from: fundPubkey,
+				amount: BigInt(100 * 10_000_000),
+			});
+			await transfer.signAuthEntries({
+				address: fundPubkey,
+				signAuthEntry: fundSigner.signAuthEntry,
+			});
+			await server.send(built!);
+			await fetchCustomBalance();
+		} catch (e) {
+			customError = e instanceof Error ? e.message : String(e);
+		} finally {
+			customLoading = false;
+		}
+	}
 </script>
 
 <!-- Custom Stellar Passkey Demo UI and Dashboard -->
@@ -467,10 +484,10 @@
             <tbody>
               <tr>
                 <td>XLM</td>
-                <td align="right">5,000</td>
+                <td align="right">{customBalance.split(' ')[0]}</td>
                 <td align="right">$0.42</td>
                 <td align="right">$0.45</td>
-                <td align="right">$2,250.00</td>
+                <td align="right">${(parseFloat(customBalance.split(' ')[0]) * 0.45).toFixed(2)}</td>
               </tr>
               <tr>
                 <td>BTC</td>
@@ -547,9 +564,10 @@
           <strong>Wallet Contract ID:</strong>
           <div style="word-break: break-all; background: #181A20; padding: 0.5em; border-radius: 0.3em; margin-top: 0.3em;">{customWalletAddress}</div>
         </div>
-        <div style="margin-bottom: 1.2rem;">
+        <div style="margin-bottom: 1.2rem; display: flex; align-items: center; gap: 1em;">
           <strong>Balance:</strong> {customBalance}
-          <button on:click={fetchCustomBalance} style="margin-left: 1em; font-size: 0.95em; padding: 0.3em 1em; border-radius: 0.3em; background: #5C6DF7; color: #fff; border: none; cursor: pointer; font-weight: 500;">Refresh</button>
+          <button on:click={fetchCustomBalance} style="font-size: 0.95em; padding: 0.3em 1em; border-radius: 0.3em; background: #5C6DF7; color: #fff; border: none; cursor: pointer; font-weight: 500;">Refresh</button>
+          <button on:click={customAddFunds} style="font-size: 0.95em; padding: 0.3em 1em; border-radius: 0.3em; background: #7fff7f; color: #181A20; border: none; cursor: pointer; font-weight: 500;">Add Funds</button>
         </div>
       </div>
     </div>
