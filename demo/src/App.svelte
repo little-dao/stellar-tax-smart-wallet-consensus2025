@@ -33,9 +33,76 @@
 	let keyName: string = "";
 	// let keyAdmin: boolean = false;
 
+	let customWalletAddress = '';
+	let customError = '';
+	let customLoading = false;
+	let customBalance = '';
+	let showDashboard = false;
+
 	if (localStorage.hasOwnProperty("sp:keyId")) {
 		keyId = localStorage.getItem("sp:keyId")!;
 		connect(keyId);
+	}
+
+	async function customRegisterPasskey() {
+		customError = '';
+		customLoading = true;
+		try {
+			const user = prompt("Give this passkey a name");
+			if (!user) {
+				customLoading = false;
+				return;
+			}
+			const { keyId, contractId, signedTx } = await account.createWallet("Custom Demo", user);
+			await server.send(signedTx);
+			customWalletAddress = contractId;
+			await fetchCustomBalance();
+			showDashboard = true;
+		} catch (e) {
+			customError = e instanceof Error ? e.message : String(e);
+		} finally {
+			customLoading = false;
+		}
+	}
+
+	async function customSignInPasskey() {
+		customError = '';
+		customLoading = true;
+		try {
+			const user = prompt("Enter your passkey name to sign in");
+			if (!user) {
+				customLoading = false;
+				return;
+			}
+			// Use the passkey-kit SDK to connect to an existing wallet
+			const { keyId, contractId } = await account.connectWallet({
+				getContractId: (keyId) => server.getContractId({ keyId }),
+			});
+			customWalletAddress = contractId;
+			await fetchCustomBalance();
+			showDashboard = true;
+		} catch (e) {
+			customError = e instanceof Error ? e.message : String(e);
+		} finally {
+			customLoading = false;
+		}
+	}
+
+	async function fetchCustomBalance() {
+		if (!customWalletAddress) return;
+		try {
+			const { result } = await native.balance({ id: customWalletAddress });
+			customBalance = (Number(result) / 10_000_000).toFixed(7) + ' XLM';
+		} catch (e) {
+			customBalance = 'Error fetching balance';
+		}
+	}
+
+	function signOut() {
+		customWalletAddress = '';
+		customBalance = '';
+		customError = '';
+		showDashboard = false;
 	}
 
 	async function register() {
@@ -331,97 +398,160 @@
 	}
 </script>
 
-<main>
-	<button on:click={register}>Register</button>
-	<button on:click={() => connect()}>Sign In</button>
-	<button on:click={reset}>Reset</button>
+<!-- Custom Stellar Passkey Demo UI and Dashboard -->
+{#if !showDashboard}
+  <div class="custom-demo-card" style="max-width: 480px; margin: 2rem auto; background: #23262F; border-radius: 1rem; box-shadow: 0 2px 16px #0004; padding: 2rem;">
+    <h2 style="color: #fff; font-size: 2rem; font-weight: bold; margin-bottom: 1rem; display: flex; align-items: center;">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style="margin-right: 0.5rem;"><circle cx="16" cy="16" r="16" fill="#5C6DF7"/><path d="M10 16.5L15 21.5L22 10.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Stellar Passkey Demo
+    </h2>
+    <p style="color: #bbb; margin-bottom: 1.5rem;">Register or sign in to a Stellar wallet using a passkey (WebAuthn). This uses the real passkey-kit SDK and works just like the official demo.</p>
+    <button on:click={customRegisterPasskey} disabled={customLoading} style="font-size: 1.1rem; padding: 0.75rem 2rem; border-radius: 0.5rem; background: #5C6DF7; color: #fff; border: none; cursor: pointer; font-weight: 600; margin-right: 1em;">
+      {customLoading ? 'Processing...' : 'Register Stellar Passkey Wallet'}
+    </button>
+    <button on:click={customSignInPasskey} disabled={customLoading} style="font-size: 1.1rem; padding: 0.75rem 2rem; border-radius: 0.5rem; background: #2326F7; color: #fff; border: none; cursor: pointer; font-weight: 600;">
+      {customLoading ? 'Processing...' : 'Sign In with Passkey'}
+    </button>
+    {#if customWalletAddress}
+      <div style="margin-top: 1.5rem; color: #7fff7f; font-size: 1.1rem;">
+        Wallet Contract ID: <code style="color: #fff; background: #181A20; padding: 0.2em 0.5em; border-radius: 0.3em;">{customWalletAddress}</code>
+      </div>
+    {/if}
+    {#if customError}
+      <div style="margin-top: 1.5rem; color: #ff7f7f; font-size: 1.1rem;">{customError}</div>
+    {/if}
+  </div>
+{/if}
 
-	{#if contractId}
-		<p>{contractId}</p>
-
-		{#if balance}
-			<p>{parseFloat((Number(balance) / 10_000_000).toFixed(7))} XLM</p>
-		{/if}
-
-		<button on:click={fundWallet}>Add Funds</button>
-		<button on:click={getWalletBalance}>Get Balance</button>
-		<br />
-		<button on:click={addEd25519Signer}>Add Ed25519 Signer</button>
-		<button on:click={ed25519Transfer}>Ed25519 Transfer</button>
-		<br />
-		<button on:click={addPolicySigner}>Add Policy Signer</button>
-		<button on:click={policyTransfer}>Policy Transfer</button>
-		<br />
-		<button on:click={multisigTransfer}>Multisig Transfer</button>
-
-		<form on:submit|preventDefault>
-			<ul style="list-style: none; padding: 0;">
-				<li>
-					<input
-						type="text"
-						placeholder="Signer name"
-						bind:value={keyName}
-					/>
-				</li>
-				<!-- <li>
-					<label for="admin">Make admin?</label>
-					<input
-						type="checkbox"
-						id="admin"
-						name="admin"
-						bind:checked={keyAdmin}
-					/>
-				</li> -->
-				<li>
-					<button on:click={() => addSigner()}>Add Signer</button>
-				</li>
-			</ul>
-		</form>
-	{/if}
-
-	<ul>
-		{#each signers as { kind, key, val, expiration, limits, evicted }}
-			<li>
-				<button disabled>
-					{#if adminSigner === key}
-						{#if keyId === key}◉{:else}◎{/if}&nbsp;
-					{:else if keyId === key}
-						●&nbsp;
-					{/if}
-					{#if limits === ADMIN_KEY}
-						ADMIN
-					{:else}
-						SESSION
-					{/if}
-				</button>
-
-				{key}
-
-				<button on:click={() => walletTransfer(key, kind)}
-					>Transfer 1 XLM</button
-				>
-
-				<!-- TODO rethink {#if (limits !== ADMIN_KEY || admins > 1) && key !== keyId} -->
-				<button on:click={() => removeSigner(key, kind)}>Remove</button>
-				<!-- {/if} -->
-
-				<!-- TODO redo {#if limits === ADMIN_KEY && key !== adminSigner}
-					<button on:click={() => (adminSigner = key)}
-						>Set Active Admin</button
-					>
-				{:else if expired && key === account.keyId}
-					<button on:click={() => addSigner(val)}>Reload</button>
-				{/if} -->
-			</li>
-		{/each}
-	</ul>
-
-	<!-- {#if contractId}
-		<iframe
-			src="https://stellar.expert/explorer/testnet/contract/{contractId}"
-			frameborder="0"
-			width="1000"
-			height="600"
-		></iframe>
-	{/if} -->
-</main>
+{#if showDashboard}
+  <div style="min-height: 100vh; background: #181A20; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 2rem 0;">
+    <div style="width: 100%; max-width: 1100px; margin: 0 auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 style="color: #fff; font-size: 2.2rem; font-weight: bold; letter-spacing: -1px;">Stellar Smart Wallet</h1>
+        <button on:click={signOut} style="font-size: 1.1rem; padding: 0.5rem 2rem; border-radius: 0.5rem; background: #ff5c5c; color: #fff; border: none; cursor: pointer; font-weight: 600;">Sign Out</button>
+      </div>
+      <!-- Tax Summary -->
+      <div style="display: flex; gap: 2rem; margin-bottom: 2rem; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 220px; background: #23262F; border-radius: 1rem; padding: 1.5rem;">
+          <div style="color: #bbb; font-size: 1.1rem;">Total Realized P/L</div>
+          <div style="color: #7fff7f; font-size: 2rem; font-weight: bold;">$900.00</div>
+        </div>
+        <div style="flex: 1; min-width: 220px; background: #23262F; border-radius: 1rem; padding: 1.5rem;">
+          <div style="color: #bbb; font-size: 1.1rem;">Taxable Events</div>
+          <div style="color: #fff; font-size: 2rem; font-weight: bold;">2</div>
+        </div>
+        <div style="flex: 1; min-width: 220px; background: #23262F; border-radius: 1rem; padding: 1.5rem;">
+          <div style="color: #bbb; font-size: 1.1rem;">Est. Tax Liability</div>
+          <div style="color: #ff7f7f; font-size: 2rem; font-weight: bold;">$270.00</div>
+          <div style="color: #bbb; font-size: 0.95rem;">at 30% rate</div>
+        </div>
+        <div style="flex: 1; min-width: 220px; background: #23262F; border-radius: 1rem; padding: 1.5rem;">
+          <div style="color: #bbb; font-size: 1.1rem;">Short vs Long Term</div>
+          <div><span style="color: #ff7f7f;">Short: -$100.00</span> <span style="color: #7fff7f; margin-left: 1em;">Long: $1,000.00</span></div>
+        </div>
+      </div>
+      <!-- Holdings & Capital Gains -->
+      <div style="display: flex; gap: 2rem; margin-bottom: 2rem; flex-wrap: wrap;">
+        <div style="flex: 2; min-width: 350px; background: #23262F; border-radius: 1rem; padding: 1.5rem;">
+          <h2 style="color: #fff; font-size: 1.3rem; font-weight: bold; margin-bottom: 1rem;">Holdings</h2>
+          <table style="width: 100%; color: #fff; border-collapse: collapse;">
+            <thead>
+              <tr style="color: #bbb;">
+                <th align="left">Token</th>
+                <th align="right">Quantity</th>
+                <th align="right">Avg. Cost</th>
+                <th align="right">Current Price</th>
+                <th align="right">Market Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>XLM</td>
+                <td align="right">5,000</td>
+                <td align="right">$0.42</td>
+                <td align="right">$0.45</td>
+                <td align="right">$2,250.00</td>
+              </tr>
+              <tr>
+                <td>BTC</td>
+                <td align="right">0.25</td>
+                <td align="right">$38,000.00</td>
+                <td align="right">$42,000.00</td>
+                <td align="right">$10,500.00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="flex: 1; min-width: 300px; background: #23262F; border-radius: 1rem; padding: 1.5rem;">
+          <h2 style="color: #fff; font-size: 1.3rem; font-weight: bold; margin-bottom: 1rem;">Capital Gains</h2>
+          <table style="width: 100%; color: #fff; border-collapse: collapse;">
+            <thead>
+              <tr style="color: #bbb;">
+                <th align="left">Token</th>
+                <th align="right">Realized P/L</th>
+                <th align="right">Short Term</th>
+                <th align="right">Long Term</th>
+                <th align="right">Events</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>BTC</td>
+                <td align="right" style="color: #7fff7f;">$1,000.00</td>
+                <td align="right">—</td>
+                <td align="right" style="color: #7fff7f;">$1,000.00</td>
+                <td align="right">2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Recent Transactions -->
+      <div style="background: #23262F; border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem;">
+        <h2 style="color: #fff; font-size: 1.3rem; font-weight: bold; margin-bottom: 1rem;">Recent Transactions</h2>
+        <table style="width: 100%; color: #fff; border-collapse: collapse;">
+          <thead>
+            <tr style="color: #bbb;">
+              <th align="left">Date</th>
+              <th align="left">Token</th>
+              <th align="right">Amount</th>
+              <th align="right">Type</th>
+              <th align="right">P/L</th>
+              <th align="right">Last Trade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2025-04-16</td>
+              <td>BTC</td>
+              <td align="right">0.10</td>
+              <td align="right">Sell</td>
+              <td align="right" style="color: #7fff7f;">$400.00</td>
+              <td align="right">Apr 16, 2025</td>
+            </tr>
+            <tr>
+              <td>2025-03-10</td>
+              <td>XLM</td>
+              <td align="right">1,000</td>
+              <td align="right">Buy</td>
+              <td align="right" style="color: #bbb;">—</td>
+              <td align="right">Mar 10, 2025</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Wallet Info -->
+      <div style="background: #23262F; border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem;">
+        <h2 style="color: #fff; font-size: 1.3rem; font-weight: bold; margin-bottom: 1rem;">Wallet Info</h2>
+        <div style="margin-bottom: 1.2rem;">
+          <strong>Wallet Contract ID:</strong>
+          <div style="word-break: break-all; background: #181A20; padding: 0.5em; border-radius: 0.3em; margin-top: 0.3em;">{customWalletAddress}</div>
+        </div>
+        <div style="margin-bottom: 1.2rem;">
+          <strong>Balance:</strong> {customBalance}
+          <button on:click={fetchCustomBalance} style="margin-left: 1em; font-size: 0.95em; padding: 0.3em 1em; border-radius: 0.3em; background: #5C6DF7; color: #fff; border: none; cursor: pointer; font-weight: 500;">Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
