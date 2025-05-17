@@ -5,7 +5,6 @@ This is a prototype project developed during Consensus 2025 to explore tax repor
 The goal is to build a wallet that can:
 - Monitor Stellar transactions
 - Classify taxable events (e.g. swaps, transfers)
-- Allow CSV export for tax reporting purposes
 - Use passkey-based (WebAuthn) authentication for secure login
 
 ## Current Status
