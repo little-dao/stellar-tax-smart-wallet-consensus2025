@@ -29,3 +29,5 @@ This project was built for hackathon purposes and is **not production-ready** or
 ## License
 
 MIT — feel free to build on it.
+
+PS: I was very lazy so just wrote it based on the original passkey demo from Stellar, same build procedure, and run it in demo folder with pnpm run build :)
